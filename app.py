@@ -158,12 +158,16 @@ def age(DOB):
     return (date.today() - DOB.date()).days // 365
 
 
-def less_than_age(age, threshold):
-    if age < threshold:
-        return 1
-    else:
-        return 0
+def younger_than_age(age, threshold):
+    return 1 if age < threshold else 0
 
+
+def older_than_age(age, threshold):
+    return 1 if age > threshold else 0
+
+
+def is_HDB(housing_type):
+    return True if housing_type == "HDB" else False
 
 @app.route('/grants', methods=['GET'])
 def list_household_member_for_grants():
@@ -179,23 +183,58 @@ def list_household_member_for_grants():
     output = []
     household_dict = {housing_id: housing_type for housing_id, housing_type in household_results}
     household_df = pd.DataFrame(household_results, columns=gb.household_params)
+    household_df.set_index("housing_id", inplace=True)
+    housing_ids = household_df.index.to_list()
     member_df = pd.DataFrame(member_results, columns=gb.member_params)
-    df = household_df.merge(member_df, on="housing_id")
+    df = household_df.merge(member_df, left_index=True, right_on="housing_id")
+
+    # age
     df["DOB"] = pd.to_datetime(df["DOB"])
     df["age"] = df["DOB"].apply(age)
-    df["under_16"] = df["age"].apply(less_than_age, threshold=16)
-    df_grouped_by_housing_id = df.groupby("housing_id").sum()
-    household_for_student_bonus = df_grouped_by_housing_id[(df_grouped_by_housing_id["annual_income"] < 150000) |
-                                                           (df_grouped_by_housing_id["under_16"] >= 1)]
-    if ~household_for_student_bonus.empty:
-        grant_df = member_df[member_df["housing_id"].isin(household_for_student_bonus.index)]
-        grant_df_grouped_by_housing_id = grant_df.groupby("housing_id")
-        for housing_id, group in grant_df_grouped_by_housing_id:
-            household = {"housing_id": housing_id, "FamilyMembers": group.to_dict(orient="records"),
-                         "housing_type": household_dict[housing_id]}
-            output.append(household)
-    return jsonify(output)
+    df["under_5"] = df["age"].apply(younger_than_age, threshold=5)
+    df["under_16"] = df["age"].apply(younger_than_age, threshold=16)
+    df["under_18"] = df["age"].apply(younger_than_age, threshold=18)
+    df["over_50"] = df["age"].apply(older_than_age, threshold=50)
 
+    # creating filter table
+    for housing_id in housing_ids:
+        household = df[df["housing_id"] == housing_id]
+
+        # income
+        household_df.loc[housing_id, "household_income"] = household["annual_income"].sum()
+
+        # age
+        household_df.loc[housing_id, "under_5"] = True if household["under_5"].sum() >= 1 else False
+        household_df.loc[housing_id, "under_16"] = True if household["under_16"].sum() >= 1 else False
+        household_df.loc[housing_id, "under_18"] = True if household["under_18"].sum() >= 1 else False
+        household_df.loc[housing_id, "over_50"] = True if household["over_50"].sum() >= 1 else False
+
+        # spouse
+        household_df.loc[housing_id, "husband_wife"] = True if \
+            ~household[household["name"].isin(household["spouse"])].empty else False
+
+    # HDB or others
+    household_df["HDB"] = household_df["housing_type"].apply(is_HDB)
+
+    if grant == "Student Encouragement Bonus":
+        households_with_grant = household_df[(household_df["household_income"] < 150000) & household_df["under_16"]]
+    elif grant == "Family Togetherness Scheme":
+        households_with_grant = household_df[household_df["husband_wife"] & household_df["under_18"]]
+    elif grant == "Elder Bonus":
+        households_with_grant = household_df[household_df["HDB"] & household_df["over_50"]]
+    elif grant == "Baby Sunshine Grant":
+        households_with_grant = household_df[household_df["under_5"]]
+    elif grant == "YOLO GST Grant":
+        households_with_grant = household_df[household_df["HDB"] & (household_df["household_income"] < 100000)]
+    else:
+        raise jsonify(f"Grant: {grant} is not a valid grant")
+    households_with_grant = member_df[member_df["housing_id"].isin(households_with_grant.index)]
+    households_with_grant_grouped_by_housing_id = households_with_grant.groupby("housing_id")
+    for housing_id, group in households_with_grant_grouped_by_housing_id:
+        household = {"housing_id": housing_id, "FamilyMembers": group.to_dict(orient="records"),
+                     "housing_type": household_dict[housing_id]}
+        output.append(household)
+    return jsonify(output)
 
 
 if __name__ == "__main__":
