@@ -2,6 +2,8 @@ import flask
 from flask import request, jsonify
 import sqlite3
 import uuid
+import pandas as pd
+import globals as gb
 
 app = flask.Flask(__name__)
 
@@ -21,43 +23,52 @@ def commit_and_close_database(conn):
     return None
 
 
-# def create_database_table(c):
-#     try:
-#         create_database_table_query = "CREATE TABLE database(housing_id INT PRIMARY KEY, housing_type TEXT," \
-#                                       "name TEXT, gender TEXT, marital_status TEXT, spouse TEXT, occupation_type TEXT," \
-#                                       "annual_income INTEGER, dob TEXT)"
-#         c.execute(create_database_table_query)
-#     except sqlite3.Error as error:
-#         print("SQL error:", error)
-#     return None
-
-
-def create_household_table(c):
+### single execute function
+def execute_query(query, params=None, fetch_one=False, fetch_all=False):
+    if fetch_one and fetch_all:
+        raise AssertionError(f"Please ensure that {query} only contains either fetch_one==True or "
+                             f"fetch_all==True or both false.")
+    conn, c = connect_to_database()
+    result = None
     try:
-        create_household_table_query = "CREATE TABLE household(housing_id TEXT PRIMARY KEY, housing_type TEXT)"
-        c.execute(create_household_table_query)
+        if params is None:
+            if fetch_one:
+                result = c.execute(query).fetchone()
+            elif fetch_all:
+                result = c.execute(query).fetchall()
+            else:  # dont fetch
+                c.execute(query)
+        else:
+            if fetch_one:
+                result = c.execute(query, params).fetchone()
+            elif fetch_all:
+                result = c.execute(query, params).fetchall()
+            else:  # dont fetch
+                c.execute(query, params)
     except sqlite3.Error as error:
         print("SQL error:", error)
-    return None
+    commit_and_close_database(conn)
+    return result
 
 
-def create_member_table(c):
-    try:
-        create_member_table_query = "CREATE TABLE member(member id TEXT PRIMARY KEY, name TEXT, gender TEXT, marital_status TEXT, " \
-                                    "spouse TEXT, occupation_type TEXT, annual_income INTEGER, dob TEXT, housing_id TEXT)"
-        c.execute(create_member_table_query)
-    except sqlite3.Error as error:
-        print("SQL error:", error)
-    return None
+def create_household_table():
+    create_household_table_query = "CREATE TABLE household(housing_id TEXT PRIMARY KEY, housing_type TEXT)"
+    execute_query(create_household_table_query)
+    return True
+
+
+def create_member_table():
+    create_member_table_query = "CREATE TABLE member(member_id TEXT PRIMARY KEY, name TEXT, gender TEXT, " \
+                                "marital_status TEXT, spouse TEXT, occupation_type TEXT, annual_income INTEGER" \
+                                ", dob TEXT, housing_id TEXT)"
+    execute_query(create_member_table_query)
+    return True
 
 
 @app.route('/', methods=['GET'])
 def home():
-    conn, c = connect_to_database()
-    # create_database_table(c)
-    create_household_table(c)
-    create_member_table(c)
-    commit_and_close_database(conn)
+    create_household_table()
+    create_member_table()
     return """<h1> Hello World </h1>"""
 
 
@@ -65,46 +76,67 @@ def home():
 def create_household():
     housing_type = request.form["housing_type"]
     housing_id = str(uuid.uuid4())
-    conn, c = connect_to_database()
     insert_house_query = "INSERT INTO household(housing_id, housing_type) VALUES(?, ?)"
-    c.execute(insert_house_query, (housing_id, housing_type))
-    commit_and_close_database(conn)
+    execute_query(insert_house_query, (housing_id, housing_type))
     return jsonify(housing_id)
 
 
 @app.route('/add-member', methods=['POST'])
 def add_member():
-    conn, c = connect_to_database()
     member_id = str(uuid.uuid4())
     val_list = [val for val in request.form.values()]
     val_tuple = tuple([member_id] + val_list)
-    print(val_tuple)
     insert_member_query = "INSERT INTO member VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    c.execute(insert_member_query, val_tuple)
-    commit_and_close_database(conn)
+    execute_query(insert_member_query, val_tuple)
     return """Added member"""
 
 
 @app.route('/list-households', methods=['GET'])
 def list_households():
-    conn, c = connect_to_database()
-    select_household_query = "SELECT * FROM household"
-    household_results = c.execute(select_household_query).fetchall()
-    output = {}
-    household_params = ["housing_id", "housing_type"]
-    member_params = ["member_id", "name", "gender", "marital_status", "spouse", "occupation_type", "annual_income", "DOB",
-                     "housing_id"]
-    for i, household_result in enumerate(household_results):
-        household_dict = {key: val for key, val in zip(household_params, household_result)}
-        select_member_query = "SELECT * FROM member WHERE housing_id=?"
-        member_results = c.execute(select_member_query, (household_dict["housing_id"],)).fetchall()
-        for j, member_result in enumerate(member_results):
-            member_dict = {key: val for key, val in zip(member_params, member_result)
-                           if key != "member_id" and key != "housing_id"}
-            household_dict[str(j)] = member_dict
-        output[str(i)] = household_dict
 
-    commit_and_close_database(conn)
+    # Select all households and members
+    select_household_query = "SELECT * FROM household"
+    household_results = execute_query(select_household_query, fetch_all=True)
+    select_member_query = "SELECT * FROM member"
+    member_results = execute_query(select_member_query, fetch_all=True)
+
+    # init output as a list
+    output = []
+
+    # Housing id is used as the key and housing type the value
+    household_dict = {housing_id: housing_type for housing_id, housing_type in household_results}
+    member_df = pd.DataFrame(member_results, columns=gb.member_params)
+    member_df_grouped_by_housing_id = member_df.groupby("housing_id")
+    for housing_id, group in member_df_grouped_by_housing_id:
+        household = {"housing_id": housing_id, "FamilyMembers": group.to_dict(orient="records"),
+                     "housing_type": household_dict[housing_id]}
+        output.append(household)
+
+    return jsonify(output)
+
+
+@app.route('/show-household', methods=['GET'])
+def show_household():
+    housing_id = request.args["housing_id"]
+
+    # select the desired household by housing id
+    select_household_query = "SELECT * FROM household WHERE housing_id=?"
+    household_result = execute_query(select_household_query, (housing_id,), fetch_one=True)
+
+    # init output as a dict of housing id and housing type
+    output = {key: val for key, val in zip(gb.household_params, household_result)}
+
+    # select members from the desired household by housing id
+    select_member_query = "SELECT * FROM member WHERE housing_id=?"
+    member_results = execute_query(select_member_query, (output["housing_id"],), fetch_all=True)
+
+    # init family members as a list
+    family_members = []
+    for member_result in member_results:
+        member_dict = {key: val for key, val in zip(gb.member_params, member_result)}
+        family_members.append(member_dict)
+    output["FamilyMembers"] = family_members
+
     return jsonify(output)
 
 

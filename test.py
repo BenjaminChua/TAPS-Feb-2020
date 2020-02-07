@@ -19,6 +19,13 @@ def list_household(url):
     return response
 
 
+def show_household(url, housing_id):
+    add = "/show-household"
+    params = {"housing_id": housing_id}
+    response = requests.get(url + add, params=params)
+    return response
+
+
 def add_member(url, member):
     add = "/add-member"
     response = requests.post(url + add, data=member)
@@ -43,7 +50,7 @@ def main():
               "gender": "M",
               "marital_status": "Married",
               "spouse": "Jane",
-              "occupation_type": "Engineer",
+              "occupation_type": "Employed",
               "annual_income": 100000,
               "DOB": "10/05/1985",
               "housing_id": housing_id}
@@ -52,7 +59,7 @@ def main():
               "gender": "F",
               "marital_status": "Married",
               "spouse": "John",
-              "occupation_type": "UI designer",
+              "occupation_type": "Employed",
               "annual_income": 150000,
               "DOB": "01/01/1989",
               "housing_id": housing_id}
@@ -70,11 +77,13 @@ def main():
     response_add_member = add_member(url, mother)
     response_add_member = add_member(url, child)
     """
-    response_list_households = list_household(url)
-    response_list_members = list_members(url)
+    # response_list_households = list_household(url)
+    # response_list_members = list_members(url)
+    response_show_household = show_household(url, "01931db3-2c06-4893-86f7-6340265f4972")
 
-    print(response_list_households.text)
-    print(response_list_members.text)
+    # print(response_list_households.text)
+    # print(response_list_members.text)
+    print(response_show_household.text)
 
 
 if __name__ == "__main__":
