@@ -38,6 +38,13 @@ def list_members(url):
     return response
 
 
+def get_households_eligible_for_grants(url, grant):
+    add = "/grants"
+    params = {"grant": grant}
+    response = requests.get(url + add, params=params)
+    return response
+
+
 def main():
     url = "http://127.0.0.1:5000"
     housing_type = 'landed'
@@ -79,11 +86,13 @@ def main():
     """
     # response_list_households = list_household(url)
     # response_list_members = list_members(url)
-    response_show_household = show_household(url, "01931db3-2c06-4893-86f7-6340265f4972")
+    # response_show_household = show_household(url, "01931db3-2c06-4893-86f7-6340265f4972")
+    response_grants = get_households_eligible_for_grants(url, "Student Encouragement Bonus")
 
     # print(response_list_households.text)
     # print(response_list_members.text)
-    print(response_show_household.text)
+    # print(response_show_household.text)
+    print(response_grants.text)
 
 
 if __name__ == "__main__":

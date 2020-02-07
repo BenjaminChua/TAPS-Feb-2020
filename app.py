@@ -1,9 +1,10 @@
 import flask
-from flask import request, jsonify
+from flask import request, jsonify, url_for
 import sqlite3
 import uuid
 import pandas as pd
 import globals as gb
+from datetime import date
 
 app = flask.Flask(__name__)
 
@@ -69,23 +70,33 @@ def create_member_table():
 def home():
     create_household_table()
     create_member_table()
-    return """<h1> Hello World </h1>"""
+    return """Created household and member table"""
 
 
 @app.route('/create-household', methods=['POST'])
 def create_household():
     housing_type = request.form["housing_type"]
+
+    # create a unique housing id
     housing_id = str(uuid.uuid4())
+
+    # insert household into household table
     insert_house_query = "INSERT INTO household(housing_id, housing_type) VALUES(?, ?)"
     execute_query(insert_house_query, (housing_id, housing_type))
+
     return jsonify(housing_id)
 
 
 @app.route('/add-member', methods=['POST'])
 def add_member():
+    # create a unique member id
     member_id = str(uuid.uuid4())
+
+    # get member details from inputs (requires housing id)
     val_list = [val for val in request.form.values()]
     val_tuple = tuple([member_id] + val_list)
+
+    # insert member into member table
     insert_member_query = "INSERT INTO member VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     execute_query(insert_member_query, val_tuple)
     return """Added member"""
@@ -105,6 +116,9 @@ def list_households():
 
     # Housing id is used as the key and housing type the value
     household_dict = {housing_id: housing_type for housing_id, housing_type in household_results}
+
+    # Members are converted to a data frame and grouped by housing id
+    # Each household is a dictionary of family members
     member_df = pd.DataFrame(member_results, columns=gb.member_params)
     member_df_grouped_by_housing_id = member_df.groupby("housing_id")
     for housing_id, group in member_df_grouped_by_housing_id:
@@ -140,13 +154,48 @@ def show_household():
     return jsonify(output)
 
 
-@app.route('/list-members', methods=['GET'])
-def list_members():
-    conn, c = connect_to_database()
-    query = "SELECT * FROM member"
-    results = c.execute(query).fetchall()
-    commit_and_close_database(conn)
-    return jsonify(results)
+def age(DOB):
+    return (date.today() - DOB.date()).days // 365
+
+
+def less_than_age(age, threshold):
+    if age < threshold:
+        return 1
+    else:
+        return 0
+
+
+@app.route('/grants', methods=['GET'])
+def list_household_member_for_grants():
+    grant = request.args["grant"]
+    assert grant in gb.grant_names
+
+    # Select all households and members
+    select_household_query = "SELECT * FROM household"
+    household_results = execute_query(select_household_query, fetch_all=True)
+    select_member_query = "SELECT * FROM member"
+    member_results = execute_query(select_member_query, fetch_all=True)
+
+    output = []
+    household_dict = {housing_id: housing_type for housing_id, housing_type in household_results}
+    household_df = pd.DataFrame(household_results, columns=gb.household_params)
+    member_df = pd.DataFrame(member_results, columns=gb.member_params)
+    df = household_df.merge(member_df, on="housing_id")
+    df["DOB"] = pd.to_datetime(df["DOB"])
+    df["age"] = df["DOB"].apply(age)
+    df["under_16"] = df["age"].apply(less_than_age, threshold=16)
+    df_grouped_by_housing_id = df.groupby("housing_id").sum()
+    household_for_student_bonus = df_grouped_by_housing_id[(df_grouped_by_housing_id["annual_income"] < 150000) |
+                                                           (df_grouped_by_housing_id["under_16"] >= 1)]
+    if ~household_for_student_bonus.empty:
+        grant_df = member_df[member_df["housing_id"].isin(household_for_student_bonus.index)]
+        grant_df_grouped_by_housing_id = grant_df.groupby("housing_id")
+        for housing_id, group in grant_df_grouped_by_housing_id:
+            household = {"housing_id": housing_id, "FamilyMembers": group.to_dict(orient="records"),
+                         "housing_type": household_dict[housing_id]}
+            output.append(household)
+    return jsonify(output)
+
 
 
 if __name__ == "__main__":
