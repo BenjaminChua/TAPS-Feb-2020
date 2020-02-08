@@ -3,8 +3,9 @@ from globals import local_host
 import test_households_and_members as hm
 
 
-def set_up_database(url):
-    response = requests.get(url)
+def create_household_member_tables(url):
+    add = "/create_household_member_tables"
+    response = requests.post(url + add)
     return response
 
 
@@ -70,7 +71,7 @@ def main():
 
     # creates the database, household and member tables
     print("Create database, household and member tables")
-    set_up_database(local_host)
+    create_household_member_tables(local_host)
     print_separator()
 
     # creates households and adds members

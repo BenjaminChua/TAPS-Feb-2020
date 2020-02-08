@@ -66,7 +66,7 @@ def create_member_table():
     return True
 
 
-@app.route('/', methods=['GET'])
+@app.route('/create_household_member_tables', methods=['POST'])
 def home():
     create_household_table()
     create_member_table()
