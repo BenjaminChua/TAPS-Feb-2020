@@ -146,6 +146,11 @@ Example code in test.py
 delete_member(local_host, father_member_id)
 ```
 
+## Notes
+The three households in test_households_and_members.py was chosen to specifically test for the grants API. Household 1
+should meet ALL grant criteria, household 2 should meet NONE of the grant criteria and household 3 is a special case to 
+test if single parent households meet the "Family Togetherness Scheme" grant.
+
 ## Built With
 
 * [Flask](https://flask.palletsprojects.com/en/1.1.x/) - The web application framework used
