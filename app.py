@@ -10,7 +10,7 @@ app = flask.Flask(__name__)
 
 
 def connect_to_database():
-    db = "grant_disbursement.db"
+    db = gb.db
     conn = sqlite3.connect(db)
     print(f"Connected to database: {db}")
     c = conn.cursor()
@@ -24,7 +24,7 @@ def commit_and_close_database(conn):
     return None
 
 
-### single execute function
+# single execute function
 def execute_query(query, params=None, fetch_one=False, fetch_all=False):
     if fetch_one and fetch_all:
         raise AssertionError(f"Please ensure that {query} only contains either fetch_one==True or "
@@ -99,12 +99,11 @@ def add_member():
     # insert member into member table
     insert_member_query = "INSERT INTO member VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     execute_query(insert_member_query, val_tuple)
-    return """Added member"""
+    return jsonify(member_id)
 
 
 @app.route('/list-households', methods=['GET'])
 def list_households():
-
     # Select all households and members
     select_household_query = "SELECT * FROM household"
     household_results = execute_query(select_household_query, fetch_all=True)
@@ -169,6 +168,7 @@ def older_than_age(age, threshold):
 def is_HDB(housing_type):
     return True if housing_type == "HDB" else False
 
+
 @app.route('/grants', methods=['GET'])
 def list_household_member_for_grants():
     grant = request.args["grant"]
@@ -180,6 +180,8 @@ def list_household_member_for_grants():
     select_member_query = "SELECT * FROM member"
     member_results = execute_query(select_member_query, fetch_all=True)
 
+    # convert query results into data frames
+    # combine data frames into df
     output = []
     household_dict = {housing_id: housing_type for housing_id, housing_type in household_results}
     household_df = pd.DataFrame(household_results, columns=gb.household_params)
@@ -211,11 +213,12 @@ def list_household_member_for_grants():
 
         # spouse
         household_df.loc[housing_id, "husband_wife"] = True if \
-            ~household[household["name"].isin(household["spouse"])].empty else False
+            household["name"].isin(household["spouse"]).sum() >= 2 else False
 
     # HDB or others
     household_df["HDB"] = household_df["housing_type"].apply(is_HDB)
 
+    # get households eligible for specific grant
     if grant == "Student Encouragement Bonus":
         households_with_grant = household_df[(household_df["household_income"] < 150000) & household_df["under_16"]]
     elif grant == "Family Togetherness Scheme":
@@ -228,6 +231,8 @@ def list_household_member_for_grants():
         households_with_grant = household_df[household_df["HDB"] & (household_df["household_income"] < 100000)]
     else:
         raise jsonify(f"Grant: {grant} is not a valid grant")
+
+    # format output
     households_with_grant = member_df[member_df["housing_id"].isin(households_with_grant.index)]
     households_with_grant_grouped_by_housing_id = households_with_grant.groupby("housing_id")
     for housing_id, group in households_with_grant_grouped_by_housing_id:
@@ -235,6 +240,32 @@ def list_household_member_for_grants():
                      "housing_type": household_dict[housing_id]}
         output.append(household)
     return jsonify(output)
+
+
+@app.route('/delete-household', methods=['DELETE'])
+def delete_household():
+    housing_id = request.form["housing_id"]
+    delete_household_query = "DELETE FROM household WHERE housing_id=?"
+    execute_query(delete_household_query, (housing_id,))
+    delete_members_query = "DELETE FROM member WHERE housing_id=?"
+    execute_query(delete_members_query, (housing_id,))
+    return """Deleted household"""
+
+
+@app.route('/delete-member', methods=['DELETE'])
+def delete_member():
+    member_id = request.form["member_id"]
+    delete_member_query = "DELETE FROM member WHERE member_id=?"
+    execute_query(delete_member_query, (member_id,))
+    return """Deleted member"""
+
+
+@app.route('/get-members', methods=['GET'])
+def get_members():
+    # member_id = request.form["member_id"]
+    member_query = "SELECT * FROM member"
+    response = execute_query(member_query, fetch_all=True)
+    return jsonify(response)
 
 
 if __name__ == "__main__":

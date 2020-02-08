@@ -1,4 +1,6 @@
 import requests
+from globals import local_host
+import test_households_and_members as hm
 
 
 def set_up_database(url):
@@ -45,93 +47,108 @@ def get_households_eligible_for_grants(url, grant):
     return response
 
 
+def delete_household(url, housing_id):
+    add = "/delete-household"
+    data = {"housing_id": housing_id}
+    response = requests.delete(url + add, data=data)
+    return response
+
+
+def delete_member(url, member_id):
+    add = "/delete-member"
+    data = {"member_id": member_id}
+    response = requests.delete(url + add, data=data)
+    return response
+
+
+def print_separator():
+    print("-" * 50)
+    return None
+
+
 def main():
-    url = "http://127.0.0.1:5000"
-    """
-    response_database = set_up_database(url)
 
-    response_create_household = create_household(url, "landed")
-    housing_id = response_create_household.json()
+    # creates the database, household and member tables
+    print("Create database, household and member tables")
+    set_up_database(local_host)
+    print_separator()
 
-    father = {"name": "John",
-              "gender": "M",
-              "marital_status": "Married",
-              "spouse": "Jane",
-              "occupation_type": "Employed",
-              "annual_income": 10000,
-              "DOB": "10/05/1985",
-              "housing_id": housing_id}
+    # creates households and adds members
+    print("Create households and added members")
+    response_create_household = create_household(local_host, "HDB")
+    housing_id1 = response_create_household.json()
 
-    mother = {"name": "Jane",
-              "gender": "F",
-              "marital_status": "Married",
-              "spouse": "John",
-              "occupation_type": "Employed",
-              "annual_income": 90000,
-              "DOB": "01/01/1989",
-              "housing_id": housing_id}
+    # test for ALL grants
+    father, mother, child = hm.household_1(housing_id1)
+    add_member(local_host, father)
+    add_member(local_host, mother)
+    add_member(local_host, child)
 
-    child = {"name": "Mary",
-             "gender": "F",
-             "marital_status": "Single",
-             "spouse": "NA",
-             "occupation_type": "Student",
-             "annual_income": 0,
-             "DOB": "01/01/2014",
-             "housing_id": housing_id}
+    response_create_household = create_household(local_host, "landed")
+    housing_id2 = response_create_household.json()
 
-    response_add_member = add_member(url, father)
-    response_add_member = add_member(url, mother)
-    response_add_member = add_member(url, child)
+    # test for NO grant and deletion of sole member of household
+    father2 = hm.household_2(housing_id2)
+    father2_member_id = add_member(local_host, father2).json()
 
-    response_create_household = create_household(url, "HDB")
-    housing_id = response_create_household.json()
+    response_create_household = create_household(local_host, "Condominium")
+    housing_id3 = response_create_household.json()
 
-    father2 = {"name": "James",
-               "gender": "M",
-               "marital_status": "Married",
-               "spouse": "June",
-               "occupation_type": "Employed",
-               "annual_income": 100000,
-               "DOB": "10/05/1981",
-               "housing_id": housing_id}
+    # test for wife without husband with child < 18 y/o for Family Togetherness bonus
+    mother3, child3 = hm.household_3(housing_id3)
+    add_member(local_host, mother3)
+    add_member(local_host, child3)
 
-    mother2 = {"name": "June",
-               "gender": "F",
-               "marital_status": "Married",
-               "spouse": "James",
-               "occupation_type": "Employed",
-               "annual_income": 30000,
-               "DOB": "01/01/1985",
-               "housing_id": housing_id}
+    print_separator()
 
-    child2 = {"name": "Martha",
-              "gender": "F",
-              "marital_status": "Single",
-              "spouse": "NA",
-              "occupation_type": "Student",
-              "annual_income": 0,
-              "DOB": "01/01/2018",
-              "housing_id": housing_id}
+    # list households to check for the additions
+    print("List of all households:")
+    response_list_households = list_household(local_host)
+    print(response_list_households.text)
+    print_separator()
 
-    response_add_member = add_member(url, father2)
-    response_add_member = add_member(url, mother2)
-    response_add_member = add_member(url, child2)
-    """
-
-    # response_list_households = list_household(url)
-    # response_list_members = list_members(url)
-    # response_show_household = show_household(url, "01931db3-2c06-4893-86f7-6340265f4972")
-    response_grants = get_households_eligible_for_grants(url, "Student Encouragement Bonus")
-    # response_grants = get_households_eligible_for_grants(url, "Family Togetherness Scheme")
-    # response_grants = get_households_eligible_for_grants(url, "Elder Bonus")
-    # response_grants = get_households_eligible_for_grants(url, "Baby Sunshine Grant")
-    # response_grants = get_households_eligible_for_grants(url, "YOLO GST Grant")
-
-    # print(response_list_households.text)
-    # print(response_list_members.text)
-    # print(response_show_household.text)
+    # list eligible households for specified grant
+    print("Student Encouragement Bonus:")
+    response_grants = get_households_eligible_for_grants(local_host, "Student Encouragement Bonus")
     print(response_grants.text)
+    print_separator()
+
+    print("Family Togetherness Scheme:")
+    response_grants = get_households_eligible_for_grants(local_host, "Family Togetherness Scheme")
+    print(response_grants.text)
+    print_separator()
+
+    print("Elder Bonus:")
+    response_grants = get_households_eligible_for_grants(local_host, "Elder Bonus")
+    print(response_grants.text)
+    print_separator()
+
+    print("Baby Sunshine Grant:")
+    response_grants = get_households_eligible_for_grants(local_host, "Baby Sunshine Grant")
+    print(response_grants.text)
+    print_separator()
+
+    print("YOLO GST Grant:")
+    response_grants = get_households_eligible_for_grants(local_host, "YOLO GST Grant")
+    print(response_grants.text)
+    print_separator()
+
+    # delete household by housing id
+    print("Delete household:")
+    delete_household(local_host, housing_id1)
+    # list household to check
+    response_list_households = list_household(local_host)
+    print(response_list_households.text)
+    print_separator()
+
+    # delete member by member id
+    print("Delete member:")
+    delete_member(local_host, father2_member_id)
+    # show household by housing id
+    response_show_household = show_household(local_host, housing_id2)
+    print(response_show_household.text)
+
+    return
 
 
 if __name__ == "__main__":

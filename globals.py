@@ -3,3 +3,5 @@ member_params = ["member_id", "name", "gender", "marital_status", "spouse", "occ
                  "housing_id"]
 grant_names = ["Student Encouragement Bonus", "Family Togetherness Scheme", "Elder Bonus", "Baby Sunshine Grant",
                "YOLO GST Grant"]
+local_host = "http://127.0.0.1:5000"
+db = "grant_disbursement.db"
